@@ -1,44 +1,63 @@
 package com.mafg.mafg.mafg.mafg.catsadventures.presentation.component
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 @Composable
 fun GameCanvas(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "pendulum")
+    val angleDegrees by infiniteTransition.animateFloat(
+        initialValue = -45f,
+        targetValue = 45f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2000),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "angle"
+    )
+
     Canvas(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp)
+        modifier = modifier.fillMaxSize()
     ) {
-        drawRect(
-            color = Color.LightGray,
-            size = size
+        val canvasWidth = size.width
+        val canvasHeight = size.height
+
+        val anchor = Offset(canvasWidth / 2, 50f)
+        val length = canvasHeight * 0.6f
+
+        val angleRadians = (angleDegrees + 90f) * (PI.toFloat() / 180f)
+
+        val endPoint = Offset(
+            x = anchor.x + length * cos(angleRadians),
+            y = anchor.y + length * sin(angleRadians)
         )
 
+        // Draw the string
+        drawLine(
+            color = Color.Black,
+            start = anchor,
+            end = endPoint,
+            strokeWidth = 4f
+        )
+
+        // Draw the bob
         drawCircle(
             color = Color.Red,
-            center = Offset(size.width / 2, size.height / 4),
-            radius = 80f
-        )
-
-        drawRect(
-            color = Color.Blue,
-            topLeft = Offset(size.width / 4, size.height / 2),
-            size = Size(size.width / 2, 100f)
-        )
-
-        drawLine(
-            color = Color.Green,
-            start = Offset(size.width * 0.2f, size.height * 0.8f),
-            end = Offset(size.width * 0.8f, size.height * 0.8f),
-            strokeWidth = 8f
+            center = endPoint,
+            radius = 40f
         )
     }
 }
