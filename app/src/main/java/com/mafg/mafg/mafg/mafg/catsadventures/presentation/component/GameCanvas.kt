@@ -15,37 +15,48 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.mafg.mafg.mafg.mafg.catsadventures.presentation.viewmodel.GameEvent
+import com.mafg.mafg.mafg.mafg.catsadventures.presentation.viewmodel.GameViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.PI
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.random.Random
 
 @Composable
-fun GameCanvas(modifier: Modifier = Modifier) {
-    var score by remember { mutableIntStateOf(10) }
-    var timeLeft by remember { mutableIntStateOf(50) } // 50 segundos
+fun GameCanvas(
+    modifier: Modifier = Modifier,
+    viewModel: GameViewModel
+) {
+    val state by viewModel.gameState.collectAsState()
+    
     var time by remember { mutableStateOf(0f) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
 
     val pawExtension = remember { Animatable(0f) }
+    val ballAlpha = remember { Animatable(1f) }
     val scope = rememberCoroutineScope()
-    
-    var isRainbowActive by remember { mutableStateOf(false) }
     
     var targetPos by remember { mutableStateOf(Offset.Zero) }
     var currentBallPos by remember { mutableStateOf(Offset.Zero) }
+    
+    var isBallCaught by remember { mutableStateOf(false) }
 
-    // Temporizador que baja cada segundo
-    LaunchedEffect(Unit) {
-        while (timeLeft > 0) {
+    LaunchedEffect(state.timeLeft) {
+        if (state.timeLeft > 0) {
             delay(1000)
-            timeLeft--
+            viewModel.onEvent(GameEvent.DecrementTime)
         }
     }
 
@@ -62,48 +73,30 @@ fun GameCanvas(modifier: Modifier = Modifier) {
 
     val trailPositions = remember { mutableStateListOf<Offset>() }
 
-    val ballColor = if (isRainbowActive) {
+    val ballColor = if (state.isRainbowActive) {
         val hue = (time * 360f) % 360f
         Color.hsv(hue, 0.7f, 0.9f)
     } else {
-        Color(0xFFAEC6CF) // Azul pastel
+        Color(0xFFAEC6CF)
     }
 
-    // Definición del degradado azul (de oscuro a claro)
     val blueGradient = Brush.verticalGradient(
-        colors = listOf(
-            Color(0xFF0D47A1), // Azul oscuro (Blue 900)
-            Color(0xFFE3F2FD)  // Azul claro (Blue 50)
-        )
+        colors = listOf(Color(0xFF0D47A1), Color(0xFFE3F2FD))
     )
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(blueGradient)
-    ) {
-        // Temporizador en la esquina superior izquierda
-        val minutes = timeLeft / 60
-        val seconds = timeLeft % 60
-        val timerText = "%02d:%02d".format(minutes, seconds)
-        
+    Box(modifier = modifier.fillMaxSize().background(blueGradient)) {
         Text(
-            text = timerText,
+            text = "%02d:%02d".format(state.timeLeft / 60, state.timeLeft % 60),
             style = MaterialTheme.typography.headlineMedium,
-            color = Color.White, // Siempre blanco
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(top = 20.dp, start = 20.dp)
+            color = Color.White,
+            modifier = Modifier.align(Alignment.TopStart).padding(20.dp)
         )
 
-        // Contador de colisiones en la esquina superior derecha
         Text(
-            text = "$score",
+            text = "${state.score}",
             style = MaterialTheme.typography.displayLarge,
-            color = Color.White, // Siempre blanco
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 20.dp, end = 20.dp)
+            color = Color.White,
+            modifier = Modifier.align(Alignment.TopEnd).padding(20.dp)
         )
 
         Canvas(
@@ -113,33 +106,32 @@ fun GameCanvas(modifier: Modifier = Modifier) {
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = {
-                            if (!pawExtension.isRunning && score > 0 && timeLeft > 0) {
+                            if (!pawExtension.isRunning && state.score > 0 && state.timeLeft > 0 && ballAlpha.value > 0.9f) {
                                 targetPos = currentBallPos
                                 scope.launch {
-                                    pawExtension.animateTo(
-                                        targetValue = 1f,
-                                        animationSpec = tween(durationMillis = 150, easing = LinearEasing)
-                                    )
+                                    // Extender la pata
+                                    pawExtension.animateTo(1f, tween(200, easing = FastOutSlowInEasing))
                                     
-                                    val ch = canvasSize.height.toFloat()
-                                    val cw = canvasSize.width.toFloat()
-                                    val startPos = Offset(cw / 2, ch)
+                                    val startPos = Offset(canvasSize.width / 2f, canvasSize.height.toFloat())
                                     val tipPos = startPos + (targetPos - startPos) * 1f
                                     
-                                    val distance = (currentBallPos - tipPos).getDistance()
-                                    if (distance < 100f) { 
-                                        score--
-                                        isRainbowActive = true
-                                        launch {
-                                            delay(3000)
-                                            isRainbowActive = false
-                                        }
+                                    // Comprobar si atrapó la pelota
+                                    if ((currentBallPos - tipPos).getDistance() < 120f) {
+                                        isBallCaught = true
+                                        viewModel.onEvent(GameEvent.DecrementScore)
                                     }
-
-                                    pawExtension.animateTo(
-                                        targetValue = 0f,
-                                        animationSpec = tween(durationMillis = 200, easing = LinearEasing)
-                                    )
+                                    
+                                    // Retraer la pata (llevándose la pelota si fue atrapada)
+                                    pawExtension.animateTo(0f, tween(400, easing = LinearOutSlowInEasing))
+                                    
+                                    if (isBallCaught) {
+                                        // Efecto de desaparecer la pelota al llegar abajo
+                                        ballAlpha.animateTo(0f, tween(150))
+                                        isBallCaught = false
+                                        delay(300) // Tiempo "desaparecida"
+                                        // Reaparecer la pelota en el péndulo
+                                        ballAlpha.animateTo(1f, tween(300))
+                                    }
                                 }
                             }
                         }
@@ -149,53 +141,149 @@ fun GameCanvas(modifier: Modifier = Modifier) {
             val cw = size.width
             val ch = size.height
 
+            // --- PÉNDULO ---
             val angleDegrees = 45f * sin(time * 3f)
             val vOffset = 200f + 200f * sin(time * 2f)
             val anchor = Offset(cw / 2, 20f + vOffset)
             val ropeLength = ch * 0.3f
             val angleRadians = (angleDegrees + 90f) * (PI.toFloat() / 180f)
-            currentBallPos = Offset(
+            
+            val pendulumBallPos = Offset(
                 x = anchor.x + ropeLength * cos(angleRadians),
                 y = anchor.y + ropeLength * sin(angleRadians)
             )
 
-            val ballRadius = 60f
-
-            trailPositions.add(currentBallPos)
-            if (trailPositions.size > 15) trailPositions.removeAt(0)
-            trailPositions.forEachIndexed { index, position ->
-                val alpha = (index.toFloat() / trailPositions.size) * 0.3f
-                drawCircle(ballColor.copy(alpha = alpha), center = position, radius = (ballRadius - 5f) * (index.toFloat() / trailPositions.size))
+            // Si la pelota no está atrapada, sigue al péndulo
+            if (!isBallCaught) {
+                currentBallPos = pendulumBallPos
             }
 
-            drawCircle(color = ballColor, center = currentBallPos, radius = ballRadius)
-
-            val startPos = Offset(cw / 2, ch)
-            val currentTipPos = startPos + (targetPos - startPos) * pawExtension.value
-
-            val pawWidth = 100f
-            drawLine(
-                color = Color.Black,
-                start = startPos,
-                end = currentTipPos,
-                strokeWidth = pawWidth,
-                cap = StrokeCap.Round
-            )
+            val ballRadius = 60f
             
-            val bigTipRadius = pawWidth * 0.9f
-            drawCircle(color = Color.Black, center = currentTipPos, radius = bigTipRadius)
-
-            if (pawExtension.value > 0.1f) {
-                val pawDirection = targetPos - startPos
-                val dist = pawDirection.getDistance().coerceAtLeast(1f)
-                val unitDir = pawDirection / dist
-                val perpDir = Offset(-unitDir.y, unitDir.x)
-
-                for (i in -1..1) {
-                    val clawStart = currentTipPos + (perpDir * (i * 30f)) + (unitDir * 20f)
-                    val clawEnd = clawStart + (unitDir * 35f)
-                    drawLine(Color.White, start = clawStart, end = clawEnd, strokeWidth = 8f, cap = StrokeCap.Round)
+            // Dibujar rastro solo si no está atrapada y es visible
+            if (!isBallCaught && ballAlpha.value > 0.01f) {
+                trailPositions.add(currentBallPos)
+                if (trailPositions.size > 15) trailPositions.removeAt(0)
+                trailPositions.forEachIndexed { index, position ->
+                    val alpha = (index.toFloat() / trailPositions.size) * 0.3f * ballAlpha.value
+                    drawCircle(ballColor.copy(alpha = alpha), center = position, radius = (ballRadius - 5f) * (index.toFloat() / trailPositions.size))
                 }
+            } else {
+                trailPositions.clear()
+            }
+
+            // --- PATA DEL GATO REALISTA ---
+            val startPos = Offset(cw / 2, ch)
+            val restingPos = Offset(cw / 2, ch - 80f)
+            val currentTipPos = if (pawExtension.value > 0.01f) {
+                startPos + (targetPos - startPos) * pawExtension.value
+            } else {
+                restingPos
+            }
+            
+            // Si la pelota está atrapada, su posición sigue a la pata
+            if (isBallCaught) {
+                currentBallPos = currentTipPos
+            }
+
+            // Dibujar la pelota con su transparencia actual
+            if (ballAlpha.value > 0.01f) {
+                drawCircle(
+                    color = ballColor.copy(alpha = ballAlpha.value),
+                    center = currentBallPos,
+                    radius = ballRadius
+                )
+            }
+            
+            drawRealisticPaw(startPos, currentTipPos)
+        }
+    }
+}
+
+fun DrawScope.drawRealisticPaw(start: Offset, end: Offset) {
+    val vector = end - start
+    val angle = if (vector.getDistance() < 1f) 0f else {
+        Math.toDegrees(atan2(vector.y.toDouble(), vector.x.toDouble())).toFloat() + 90f
+    }
+    val length = vector.getDistance()
+    
+    val pawColor = Color(0xFFF5F5F5)
+    val shadowColor = Color(0xFFE0E0E0)
+    val padColor = Color(0xFFFFB7C5)
+    val furTextureColor = Color(0xFFBDBDBD).copy(alpha = 0.3f)
+
+    translate(start.x, start.y) {
+        rotate(angle, pivot = Offset.Zero) {
+            val armWidth = 120f
+            val armPath = Path().apply {
+                moveTo(-armWidth / 2, 0f)
+                lineTo(-armWidth / 2.5f, -length)
+                quadraticTo(0f, -length - 40f, armWidth / 2.5f, -length)
+                lineTo(armWidth / 2, 0f)
+                close()
+            }
+            
+            drawPath(
+                path = armPath,
+                brush = Brush.verticalGradient(
+                    0f to Color.Black,
+                    0.8f to pawColor,
+                    1f to Color.White
+                )
+            )
+
+            val headWidth = 160f
+            val headHeight = 140f
+            val headOffset = -length
+            
+            drawOval(
+                color = pawColor,
+                topLeft = Offset(-headWidth / 2, headOffset - headHeight / 2),
+                size = androidx.compose.ui.geometry.Size(headWidth, headHeight)
+            )
+
+            val toeRadius = 35f
+            val toeOffsets = listOf(
+                Offset(-60f, headOffset - 20f),
+                Offset(-25f, headOffset - 50f),
+                Offset(25f, headOffset - 50f),
+                Offset(60f, headOffset - 20f)
+            )
+
+            toeOffsets.forEach { pos ->
+                drawCircle(color = shadowColor, center = pos + Offset(0f, 5f), radius = toeRadius)
+                drawCircle(color = pawColor, center = pos, radius = toeRadius)
+                drawCircle(color = padColor, center = pos + Offset(0f, -5f), radius = toeRadius * 0.6f)
+                
+                val clawPath = Path().apply {
+                    moveTo(pos.x - 4f, pos.y - toeRadius + 5f)
+                    lineTo(pos.x, pos.y - toeRadius - 25f)
+                    lineTo(pos.x + 4f, pos.y - toeRadius + 5f)
+                    close()
+                }
+                drawPath(clawPath, color = Color(0xFFEEEEEE))
+            }
+
+            val mainPadPath = Path().apply {
+                val cx = 0f
+                val cy = headOffset + 20f
+                moveTo(cx, cy + 10f)
+                cubicTo(cx - 50f, cy - 10f, cx - 40f, cy + 50f, cx, cy + 50f)
+                cubicTo(cx + 40f, cy + 50f, cx + 50f, cy - 10f, cx, cy + 10f)
+                close()
+            }
+            drawPath(mainPadPath, color = padColor)
+
+            for (i in 0..10) {
+                val x = Random.nextInt(-70, 71).toFloat()
+                val y = Random.nextInt((-length - 60).toInt(), (-length + 40).toInt()).toFloat()
+                drawLine(
+                    color = furTextureColor,
+                    start = Offset(x, y),
+                    end = Offset(x, y + 15f),
+                    strokeWidth = 2f,
+                    cap = StrokeCap.Round
+                )
             }
         }
     }

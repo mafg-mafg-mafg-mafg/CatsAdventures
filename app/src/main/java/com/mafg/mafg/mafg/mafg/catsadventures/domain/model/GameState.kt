@@ -9,6 +9,8 @@ sealed class Screen {
 data class GameState(
     val currentScreen: Screen = Screen.Main,
     val currentChapter: Int = 1,
-    val isLoading: Boolean = false
+    val isLoading: Boolean = false,
+    val score: Int = 10,
+    val timeLeft: Int = 50,
+    val isRainbowActive: Boolean = false
 )
-
