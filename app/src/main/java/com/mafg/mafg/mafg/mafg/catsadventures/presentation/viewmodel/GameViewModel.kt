@@ -43,8 +43,9 @@ class GameViewModel @Inject constructor(
                 }
             }
             is GameEvent.DecrementTime -> {
-                if (_gameState.value.timeLeft > 0) {
-                    _gameState.update { it.copy(timeLeft = it.timeLeft - 1) }
+                if (_gameState.value.timeLeft > 0f) {
+                    // Decrementamos en pasos más pequeños para los milisegundos (ej. 0.01s)
+                    _gameState.update { it.copy(timeLeft = (it.timeLeft - 0.01f).coerceAtLeast(0f)) }
                 }
             }
         }

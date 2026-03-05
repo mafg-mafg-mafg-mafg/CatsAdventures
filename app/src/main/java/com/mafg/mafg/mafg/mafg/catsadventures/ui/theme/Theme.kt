@@ -49,10 +49,10 @@ fun CatsAdventuresTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            // Usamos un azul más claro (Blue 200) para que los iconos negros resalten bien
-            window.statusBarColor = Color(0xFF90CAF9).toArgb()
-            // true para que los iconos sean negros (oscuros)
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = true
+            // Seteamos el azul más oscuro del gradiente del atardecer (0xFF1A237E)
+            window.statusBarColor = Color(0xFF1A237E).toArgb()
+            // false para que los iconos sean blancos (claros)
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
         }
     }
 

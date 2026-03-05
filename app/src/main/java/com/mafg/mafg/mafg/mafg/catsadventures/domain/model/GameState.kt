@@ -11,6 +11,6 @@ data class GameState(
     val currentChapter: Int = 1,
     val isLoading: Boolean = false,
     val score: Int = 10,
-    val timeLeft: Int = 50,
+    val timeLeft: Float = 50f, // Cambiado a Float para milisegundos
     val isRainbowActive: Boolean = false
 )
