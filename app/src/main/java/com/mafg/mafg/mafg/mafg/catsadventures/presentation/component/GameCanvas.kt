@@ -14,20 +14,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.mafg.mafg.mafg.mafg.catsadventures.presentation.viewmodel.GameEvent
 import com.mafg.mafg.mafg.mafg.catsadventures.presentation.viewmodel.GameViewModel
 import kotlinx.coroutines.delay
@@ -77,21 +74,61 @@ fun GameCanvas(
 
     val trailPositions = remember { mutableStateListOf<Offset>() }
 
-    val matteLightBlue = Color(0xFFB3E5FC)
+    // Fondo degradado para el atardecer
+    val sunsetGradient = Brush.verticalGradient(
+        colors = listOf(
+            Color(0xFF1A237E), // Azul oscuro (arriba)
+            Color(0xFF3F51B5), // Azul medio
+            Color(0xFF9575CD), // Violeta
+            Color(0xFFFF7043), // Naranja (abajo)
+            Color(0xFFFFAB91)  // Naranja claro / Durazno (horizonte)
+        )
+    )
 
-    Box(modifier = modifier.fillMaxSize().background(matteLightBlue)) {
+    Box(modifier = modifier.fillMaxSize().background(sunsetGradient)) {
+        // --- CONTADOR DE TIEMPO ANIMADO ---
+        val timeLeftScale = remember { Animatable(1f) }
+        LaunchedEffect(state.timeLeft) {
+            timeLeftScale.animateTo(1.2f, tween(100))
+            timeLeftScale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+        }
+        
         Text(
             text = "%02d:%02d".format(state.timeLeft / 60, state.timeLeft % 60),
-            style = MaterialTheme.typography.headlineMedium,
-            color = Color.Black,
-            modifier = Modifier.align(Alignment.TopStart).padding(20.dp)
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 32.sp
+            ),
+            color = Color.White,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(20.dp)
+                .graphicsLayer {
+                    scaleX = timeLeftScale.value
+                    scaleY = timeLeftScale.value
+                }
         )
+
+        // --- CONTADOR DE SCORE ANIMADO ---
+        val scoreScale = remember { Animatable(1f) }
+        LaunchedEffect(state.score) {
+            scoreScale.animateTo(1.5f, tween(100))
+            scoreScale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+        }
 
         Text(
             text = "${state.score}",
-            style = MaterialTheme.typography.displayLarge,
-            color = Color.Black,
-            modifier = Modifier.align(Alignment.TopEnd).padding(20.dp)
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontWeight = FontWeight.Bold
+            ),
+            color = Color.White,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(20.dp)
+                .graphicsLayer {
+                    scaleX = scoreScale.value
+                    scaleY = scoreScale.value
+                }
         )
 
         Canvas(
@@ -166,14 +203,6 @@ fun GameCanvas(
                 trailPositions.clear()
             }
 
-            val holeWidth = 200f
-            val holeHeight = 60f
-            drawOval(
-                color = Color.Black,
-                topLeft = Offset((cw / 2) - (holeWidth / 2), ch - (holeHeight / 2)),
-                size = Size(holeWidth, holeHeight)
-            )
-
             val startPos = Offset(cw / 2, ch)
             val restingPos = Offset(cw / 2, ch - 80f)
             val currentTipPos = if (pawExtension.value > 0.01f) {
@@ -214,22 +243,29 @@ fun GameCanvas(
 }
 
 fun DrawScope.drawSun(cw: Float, ch: Float, time: Float) {
-    val sunCenter = Offset(cw * 0.85f, ch * 0.15f)
-    val sunRadius = 60f
+    // Sol de atardecer: más bajo, más naranja y más grande
+    val sunCenter = Offset(cw * 0.5f, ch * 0.6f) 
+    val sunRadius = 100f
     
-    val pulse = (sin(time * 2f) + 1f) * 10f
+    // Brillo exterior animado (halo de atardecer)
+    val pulse = (sin(time * 1.5f) + 1f) * 15f
     drawCircle(
         brush = Brush.radialGradient(
-            colors = listOf(Color(0xFFFFEE58).copy(alpha = 0.4f), Color.Transparent),
+            colors = listOf(Color(0xFFFF7043).copy(alpha = 0.5f), Color.Transparent),
             center = sunCenter,
-            radius = sunRadius * 2f + pulse
+            radius = sunRadius * 3f + pulse
         ),
         center = sunCenter,
-        radius = sunRadius * 2f + pulse
+        radius = sunRadius * 3f + pulse
     )
     
+    // Cuerpo del sol (gradiente naranja-amarillo)
     drawCircle(
-        color = Color(0xFFFFEB3B),
+        brush = Brush.linearGradient(
+            colors = listOf(Color(0xFFFFEB3B), Color(0xFFF4511E)),
+            start = Offset(sunCenter.x, sunCenter.y - sunRadius),
+            end = Offset(sunCenter.x, sunCenter.y + sunRadius)
+        ),
         center = sunCenter,
         radius = sunRadius
     )
@@ -237,7 +273,8 @@ fun DrawScope.drawSun(cw: Float, ch: Float, time: Float) {
 
 fun DrawScope.drawClouds(cw: Float, ch: Float, time: Float) {
     fun drawCloud(x: Float, y: Float, scale: Float) {
-        val cloudColor = Color.White.copy(alpha = 0.8f)
+        // Nubes teñidas por el atardecer
+        val cloudColor = Color(0xFFFFCCBC).copy(alpha = 0.6f)
         val cloudSize = 40f * scale
         drawCircle(cloudColor, center = Offset(x, y), radius = cloudSize)
         drawCircle(cloudColor, center = Offset(x + cloudSize * 0.8f, y - cloudSize * 0.2f), radius = cloudSize * 0.8f)
@@ -245,11 +282,10 @@ fun DrawScope.drawClouds(cw: Float, ch: Float, time: Float) {
         drawCircle(cloudColor, center = Offset(x + cloudSize * 1.4f, y + cloudSize * 0.1f), radius = cloudSize * 0.6f)
         drawCircle(cloudColor, center = Offset(x - cloudSize * 1.4f, y + cloudSize * 0.1f), radius = cloudSize * 0.6f)
     }
-
-    val speed = 20f
-    drawCloud((time * speed + 100f) % (cw + 200f) - 100f, ch * 0.1f, 1.2f)
-    drawCloud((time * speed * 0.7f + cw * 0.5f) % (cw + 300f) - 150f, ch * 0.25f, 0.9f)
-    drawCloud((time * speed * 1.2f + cw * 0.8f) % (cw + 250f) - 120f, ch * 0.18f, 1.0f)
+    val speed = 15f
+    drawCloud((time * speed + 100f) % (cw + 200f) - 100f, ch * 0.15f, 1.2f)
+    drawCloud((time * speed * 0.7f + cw * 0.5f) % (cw + 300f) - 150f, ch * 0.35f, 0.9f)
+    drawCloud((time * speed * 1.2f + cw * 0.8f) % (cw + 250f) - 120f, ch * 0.22f, 1.0f)
 }
 
 fun DrawScope.drawBee(center: Offset, size: Float, alpha: Float, time: Float) {
@@ -295,7 +331,9 @@ fun DrawScope.drawImprovedMountains(cw: Float, ch: Float) {
             lineTo(baseEnd, groundY)
             close()
         }
-        drawPath(path = path, brush = Brush.linearGradient(colors = listOf(color.compositeOver(Color.White.copy(0.3f)), color.compositeOver(Color.Black.copy(0.2f))), start = Offset(baseStart, peakY), end = Offset(baseEnd, groundY)))
+        // Montañas con tonos púrpura/grisáceos de atardecer
+        val mountainColor = color.compositeOver(Color(0xFF5E35B1).copy(alpha = 0.3f))
+        drawPath(path = path, brush = Brush.linearGradient(colors = listOf(mountainColor.compositeOver(Color.White.copy(0.2f)), mountainColor.compositeOver(Color.Black.copy(0.3f))), start = Offset(baseStart, peakY), end = Offset(baseEnd, groundY)))
         val snowPath = Path().apply {
             moveTo(peakX - (peakX - baseStart) * 0.15f, peakY + (groundY - peakY) * 0.15f)
             lineTo(peakX, peakY)
@@ -309,28 +347,29 @@ fun DrawScope.drawImprovedMountains(cw: Float, ch: Float) {
             }
             close()
         }
-        drawPath(snowPath, color = Color.White.copy(alpha = 0.9f))
+        drawPath(snowPath, color = Color(0xFFFCE4EC).copy(alpha = 0.8f)) // Nieve rosada por el reflejo
     }
-    drawMountainShape(-200f, cw * 0.2f, groundY - 350f, cw * 0.5f, Color(0xFFB0BEC5), 789)
-    drawMountainShape(cw * 0.5f, cw * 0.85f, groundY - 300f, cw * 1.3f, Color(0xFFCFD8DC), 101)
-    drawMountainShape(cw * 0.3f, cw * 0.65f, groundY - 500f, cw * 1.1f, Color(0xFF78909C), 456)
-    drawMountainShape(-50f, cw * 0.45f, groundY - 250f, cw * 0.95f, Color(0xFF546E7A), 123)
+    drawMountainShape(-200f, cw * 0.2f, groundY - 350f, cw * 0.5f, Color(0xFF78909C), 789)
+    drawMountainShape(cw * 0.5f, cw * 0.85f, groundY - 300f, cw * 1.3f, Color(0xFF90A4AE), 101)
+    drawMountainShape(cw * 0.3f, cw * 0.65f, groundY - 500f, cw * 1.1f, Color(0xFF546E7A), 456)
+    drawMountainShape(-50f, cw * 0.45f, groundY - 250f, cw * 0.95f, Color(0xFF455A64), 123)
 }
 
 fun DrawScope.drawForest(cw: Float, ch: Float) {
     val groundHeight = 120f
-    drawRect(color = Color(0xFF2E7D32), topLeft = Offset(0f, ch - groundHeight), size = Size(cw, groundHeight))
+    // Pasto más oscuro por la falta de luz directa
+    drawRect(color = Color(0xFF1B5E20), topLeft = Offset(0f, ch - groundHeight), size = Size(cw, groundHeight))
     val randomDist = Random(123)
     for (i in 0..8) {
         val x = randomDist.nextFloat() * cw
         val scale = 0.5f + randomDist.nextFloat() * 0.5f
-        drawTree(x, ch - groundHeight + 20f, scale, Color(0xFF1B5E20))
+        drawTree(x, ch - groundHeight + 20f, scale, Color(0xFF0D2E10))
     }
     val randomNear = Random(456)
     for (i in 0..4) {
         val x = (cw / 5) * i + randomNear.nextFloat() * (cw / 10)
         val scale = 0.8f + randomNear.nextFloat() * 0.4f
-        drawTree(x, ch - groundHeight + 50f, scale, Color(0xFF388E3C))
+        drawTree(x, ch - groundHeight + 50f, scale, Color(0xFF1B5E20))
     }
 }
 
@@ -339,7 +378,7 @@ fun DrawScope.drawTree(x: Float, groundY: Float, scale: Float, leafColor: Color)
     val trunkHeight = 30f * scale
     val leavesWidth = 60f * scale
     val leavesHeight = 80f * scale
-    drawRect(color = Color(0xFF3E2723), topLeft = Offset(x - trunkWidth / 2, groundY - trunkHeight), size = Size(trunkWidth, trunkHeight))
+    drawRect(color = Color(0xFF21100D), topLeft = Offset(x - trunkWidth / 2, groundY - trunkHeight), size = Size(trunkWidth, trunkHeight))
     val path = Path().apply {
         moveTo(x, groundY - trunkHeight - leavesHeight)
         lineTo(x - leavesWidth / 2, groundY - trunkHeight)
