@@ -131,9 +131,13 @@ fun GameCanvas(
             val cw = size.width
             val ch = size.height
 
+            // --- ELEMENTOS DE FONDO ---
+            drawSun(cw, ch, time)
+            drawClouds(cw, ch, time)
             drawImprovedMountains(cw, ch)
             drawForest(cw, ch)
 
+            // --- PÉNDULO ---
             val angleDegrees = 45f * sin(time * 3f)
             val vOffset = 200f + 200f * sin(time * 2f)
             val anchor = Offset(cw / 2, 20f + vOffset)
@@ -149,7 +153,7 @@ fun GameCanvas(
                 currentBeePos = pendulumBeePos
             }
 
-            val beeSize = 70f // Abeja más grande (antes 50f)
+            val beeSize = 70f
             
             if (!isBeeCaught && beeAlpha.value > 0.01f) {
                 trailPositions.add(currentBeePos)
@@ -190,9 +194,9 @@ fun GameCanvas(
                     brush = rainbowBrush,
                     start = startPos,
                     end = lineEnd,
-                    strokeWidth = 4f, // Línea menos gruesa (antes 8f)
+                    strokeWidth = 4f,
                     cap = StrokeCap.Round,
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f) // Ajuste de guiones
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
                 )
             }
             
@@ -209,53 +213,66 @@ fun GameCanvas(
     }
 }
 
+fun DrawScope.drawSun(cw: Float, ch: Float, time: Float) {
+    val sunCenter = Offset(cw * 0.85f, ch * 0.15f)
+    val sunRadius = 60f
+    
+    val pulse = (sin(time * 2f) + 1f) * 10f
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(Color(0xFFFFEE58).copy(alpha = 0.4f), Color.Transparent),
+            center = sunCenter,
+            radius = sunRadius * 2f + pulse
+        ),
+        center = sunCenter,
+        radius = sunRadius * 2f + pulse
+    )
+    
+    drawCircle(
+        color = Color(0xFFFFEB3B),
+        center = sunCenter,
+        radius = sunRadius
+    )
+}
+
+fun DrawScope.drawClouds(cw: Float, ch: Float, time: Float) {
+    fun drawCloud(x: Float, y: Float, scale: Float) {
+        val cloudColor = Color.White.copy(alpha = 0.8f)
+        val cloudSize = 40f * scale
+        drawCircle(cloudColor, center = Offset(x, y), radius = cloudSize)
+        drawCircle(cloudColor, center = Offset(x + cloudSize * 0.8f, y - cloudSize * 0.2f), radius = cloudSize * 0.8f)
+        drawCircle(cloudColor, center = Offset(x - cloudSize * 0.8f, y - cloudSize * 0.2f), radius = cloudSize * 0.8f)
+        drawCircle(cloudColor, center = Offset(x + cloudSize * 1.4f, y + cloudSize * 0.1f), radius = cloudSize * 0.6f)
+        drawCircle(cloudColor, center = Offset(x - cloudSize * 1.4f, y + cloudSize * 0.1f), radius = cloudSize * 0.6f)
+    }
+
+    val speed = 20f
+    drawCloud((time * speed + 100f) % (cw + 200f) - 100f, ch * 0.1f, 1.2f)
+    drawCloud((time * speed * 0.7f + cw * 0.5f) % (cw + 300f) - 150f, ch * 0.25f, 0.9f)
+    drawCloud((time * speed * 1.2f + cw * 0.8f) % (cw + 250f) - 120f, ch * 0.18f, 1.0f)
+}
+
 fun DrawScope.drawBee(center: Offset, size: Float, alpha: Float, time: Float) {
-    val bodyColor = Color(0xFFFFD600) // Amarillo abeja
+    val bodyColor = Color(0xFFFFD600)
     val stripeColor = Color.Black
     val wingColor = Color.White.copy(alpha = 0.6f * alpha)
-    
     val wingFlap = sin(time * 50f) * 20f
-    
     rotate(45f + wingFlap, pivot = center) {
-        drawOval(
-            color = wingColor,
-            topLeft = Offset(center.x - size * 0.8f, center.y - size * 0.5f),
-            size = Size(size * 0.8f, size * 0.4f)
-        )
+        drawOval(color = wingColor, topLeft = Offset(center.x - size * 0.8f, center.y - size * 0.5f), size = Size(size * 0.8f, size * 0.4f))
     }
     rotate(-45f - wingFlap, pivot = center) {
-        drawOval(
-            color = wingColor,
-            topLeft = Offset(center.x, center.y - size * 0.5f),
-            size = Size(size * 0.8f, size * 0.4f)
-        )
+        drawOval(color = wingColor, topLeft = Offset(center.x, center.y - size * 0.5f), size = Size(size * 0.8f, size * 0.4f))
     }
-
-    drawOval(
-        color = bodyColor.copy(alpha = alpha),
-        topLeft = Offset(center.x - size / 2, center.y - size * 0.3f),
-        size = Size(size, size * 0.6f)
-    )
-
+    drawOval(color = bodyColor.copy(alpha = alpha), topLeft = Offset(center.x - size / 2, center.y - size * 0.3f), size = Size(size, size * 0.6f))
     for (i in -1..1) {
         val xOffset = i * (size * 0.25f)
-        drawRect(
-            color = stripeColor.copy(alpha = alpha),
-            topLeft = Offset(center.x + xOffset - 2f, center.y - size * 0.28f),
-            size = Size(size * 0.15f, size * 0.56f)
-        )
+        drawRect(color = stripeColor.copy(alpha = alpha), topLeft = Offset(center.x + xOffset - 2f, center.y - size * 0.28f), size = Size(size * 0.15f, size * 0.56f))
     }
-
-    drawCircle(
-        color = Color.Black.copy(alpha = alpha),
-        center = center + Offset(size * 0.35f, -size * 0.05f),
-        radius = size * 0.08f
-    )
+    drawCircle(color = Color.Black.copy(alpha = alpha), center = center + Offset(size * 0.35f, -size * 0.05f), radius = size * 0.08f)
 }
 
 fun DrawScope.drawImprovedMountains(cw: Float, ch: Float) {
     val groundY = ch - 120f
-    
     fun drawMountainShape(baseStart: Float, peakX: Float, peakY: Float, baseEnd: Float, color: Color, seed: Int) {
         val random = Random(seed)
         val path = Path().apply {
@@ -278,14 +295,7 @@ fun DrawScope.drawImprovedMountains(cw: Float, ch: Float) {
             lineTo(baseEnd, groundY)
             close()
         }
-        drawPath(
-            path = path,
-            brush = Brush.linearGradient(
-                colors = listOf(color.compositeOver(Color.White.copy(0.3f)), color.compositeOver(Color.Black.copy(0.2f))),
-                start = Offset(baseStart, peakY),
-                end = Offset(baseEnd, groundY)
-            )
-        )
+        drawPath(path = path, brush = Brush.linearGradient(colors = listOf(color.compositeOver(Color.White.copy(0.3f)), color.compositeOver(Color.Black.copy(0.2f))), start = Offset(baseStart, peakY), end = Offset(baseEnd, groundY)))
         val snowPath = Path().apply {
             moveTo(peakX - (peakX - baseStart) * 0.15f, peakY + (groundY - peakY) * 0.15f)
             lineTo(peakX, peakY)
