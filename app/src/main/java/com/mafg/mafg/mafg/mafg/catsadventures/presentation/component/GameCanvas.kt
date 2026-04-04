@@ -37,7 +37,6 @@ import com.mafg.mafg.mafg.mafg.catsadventures.presentation.viewmodel.GameEvent
 import com.mafg.mafg.mafg.mafg.catsadventures.presentation.viewmodel.GameViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -68,7 +67,7 @@ fun GameCanvas(
     
     val trailPositions = remember { mutableStateListOf<Offset>() }
 
-    // --- OPTIMIZACIÓN: Cache de gradientes y pinceles ---
+    // Gradiente de fondo
     val sunsetGradient = remember {
         Brush.verticalGradient(
             colors = listOf(
@@ -139,7 +138,7 @@ fun GameCanvas(
         }
     }
 
-    // --- MOVIMIENTO DE LA ABEJA: SOLO MITAD SUPERIOR Y TOCANDO LÍNEA ---
+    // --- MOVIMIENTO DE LA ABEJA: ESTILO PLUMA MUY RÁPIDO ---
     LaunchedEffect(Unit) {
         var lastFrameTime = System.nanoTime()
         while (true) {
@@ -153,19 +152,17 @@ fun GameCanvas(
                     val ch = canvasSize.height.toFloat()
                     val halfHeight = ch / 2f
                     
-                    // Movimiento horizontal diverso
-                    val dx = sin(time * 0.5f) * (cw * 0.35f) + cos(time * 1.2f) * (cw * 0.1f)
+                    // Movimiento horizontal aún más rápido
+                    val dx = sin(time * 1.3f) * (cw * 0.35f) + cos(time * 0.7f) * (cw * 0.07f)
                     
-                    // Movimiento vertical restringido a la mitad superior [0, halfHeight]
-                    // Usamos abs para que la abeja descienda y "toque" la línea roja (halfHeight) periódicamente
-                    val verticalPattern = abs(sin(time * 0.6f) * cos(time * 0.4f))
-                    val dy = -verticalPattern * (halfHeight * 0.85f) // dy es negativo o cero, alejándose hacia arriba
-                    
-                    val jitter = 8f * sin(time * 40f) // Efecto de zumbido
+                    // Movimiento vertical más enérgico que toca la línea roja frecuentemente
+                    val vTime = time * 2.2f + sin(time * 1.2f) * 0.8f
+                    val verticalOscillation = (cos(vTime) + 1f) / 2f
+                    val dy = verticalOscillation * (halfHeight * 0.9f)
                     
                     currentBeePos = Offset(
-                        x = (cw / 2) + dx + jitter,
-                        y = halfHeight + dy + jitter // halfHeight es el punto más bajo (la línea roja)
+                        x = (cw / 2) + dx,
+                        y = (halfHeight * 0.1f) + dy 
                     )
 
                     if (beeAlpha.value > 0.01f) {
@@ -207,11 +204,9 @@ fun GameCanvas(
                                 scope.launch {
                                     pawExtension.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
                                     
-                                    // La zarpa solo alcanza hasta la línea roja (ch/2)
                                     val reachY = maxOf(targetPos.y, canvasSize.height / 2f)
                                     val effectiveReachPos = Offset(targetPos.x, reachY)
                                     
-                                    // La abeja solo es atrapable cuando baja a la línea roja
                                     if ((currentBeePos - effectiveReachPos).getDistance() < 130f) {
                                         isBeeCaught = true
                                         triggerFunVibration(context)
@@ -255,13 +250,12 @@ fun GameCanvas(
             // 3. Estela de la abeja
             trailPositions.forEachIndexed { index, pos ->
                 val alpha = (index.toFloat() / trailPositions.size) * 0.3f * beeAlpha.value
-                drawCircle(Color.White.copy(alpha = alpha), center = pos, radius = 12f * (index.toFloat() / trailPositions.size))
+                drawCircle(Color.White.copy(alpha = alpha), center = pos, radius = 10f * (index.toFloat() / trailPositions.size))
             }
 
             val startPos = Offset(cw / 2, ch)
             val restingPos = Offset(cw / 2, ch - 80f)
             
-            // La zarpa visualmente no sobrepasa la línea roja
             val currentTipPos = if (pawExtension.value > 0.01f) {
                 val fullPos = startPos + (targetPos - startPos) * pawExtension.value
                 Offset(fullPos.x, maxOf(fullPos.y, ch / 2f))
@@ -269,70 +263,15 @@ fun GameCanvas(
                 restingPos
             }
             
-            // Abeja
             val beeDrawPos = if (isBeeCaught) currentTipPos else currentBeePos
             if (beeAlpha.value > 0.01f) drawBee(beeDrawPos, 70f, beeAlpha.value, time)
 
-            // Zarpa
             drawRealisticPaw(startPos, currentTipPos)
         }
     }
 }
 
-// --- FUNCIONES DE CREACIÓN DE CACHE ---
-
-private fun createMountainCache(cw: Float, ch: Float): List<MountainCache> {
-    val groundY = ch - 120f
-    val caches = mutableListOf<MountainCache>()
-    fun addMountain(baseStart: Float, peakX: Float, peakY: Float, baseEnd: Float, color: Color, seed: Int) {
-        val random = Random(seed)
-        val path = Path().apply {
-            moveTo(baseStart, groundY)
-            for (i in 1..4) {
-                val t = i.toFloat() / 5
-                lineTo(baseStart + (peakX - baseStart) * t, groundY - (groundY - peakY) * t + (random.nextFloat() - 0.5f) * 40f)
-            }
-            lineTo(peakX, peakY)
-            for (i in 1..4) {
-                val t = i.toFloat() / 5
-                lineTo(peakX + (baseEnd - peakX) * t, peakY + (groundY - peakY) * t + (random.nextFloat() - 0.5f) * 40f)
-            }
-            lineTo(baseEnd, groundY); close()
-        }
-        val mountainColor = color.compositeOver(Color(0xFF5E35B1).copy(alpha = 0.3f))
-        val brush = Brush.linearGradient(
-            colors = listOf(mountainColor.compositeOver(Color.White.copy(0.2f)), mountainColor.compositeOver(Color.Black.copy(0.3f))),
-            start = Offset(baseStart, peakY), end = Offset(baseEnd, groundY)
-        )
-        val snowPath = Path().apply {
-            moveTo(peakX - (peakX - baseStart) * 0.15f, peakY + (groundY - peakY) * 0.15f); lineTo(peakX, peakY); lineTo(peakX + (baseEnd - peakX) * 0.15f, peakY + (groundY - peakY) * 0.15f)
-            for (i in 1..5) { val t = i.toFloat() / 5; lineTo(peakX + (baseEnd - peakX) * 0.15f - ((baseEnd - peakX) * 0.3f) * t, peakY + (groundY - peakY) * 0.15f + (random.nextFloat() * 20f)) }
-            close()
-        }
-        caches.add(MountainCache(path, snowPath, brush))
-    }
-    addMountain(-200f, cw * 0.2f, groundY - 350f, cw * 0.5f, Color(0xFF78909C), 789)
-    addMountain(cw * 0.5f, cw * 0.85f, groundY - 300f, cw * 1.3f, Color(0xFF90A4AE), 101)
-    addMountain(cw * 0.3f, cw * 0.65f, groundY - 500f, cw * 1.1f, Color(0xFF546E7A), 456)
-    addMountain(-50f, cw * 0.45f, groundY - 250f, cw * 0.95f, Color(0xFF455A64), 123)
-    return caches
-}
-
-private fun createTreeCache(cw: Float, ch: Float): List<TreeCache> {
-    val groundY = ch - 120f; val caches = mutableListOf<TreeCache>(); val random = Random(123)
-    repeat(9) { val x = random.nextFloat() * cw; val scale = 0.5f + random.nextFloat() * 0.5f; caches.add(createSingleTree(x, groundY + 20f, scale, Color(0xFF0D2E10))) }
-    val randomNear = Random(456); repeat(5) { i -> val x = (cw / 5) * i + randomNear.nextFloat() * (cw / 10); val scale = 0.8f + randomNear.nextFloat() * 0.4f; caches.add(createSingleTree(x, groundY + 50f, scale, Color(0xFF1B5E20))) }
-    return caches
-}
-
-private fun createSingleTree(x: Float, groundY: Float, scale: Float, color: Color): TreeCache {
-    val tw = 15f * scale; val th = 30f * scale; val lw = 60f * scale; val lh = 80f * scale
-    val trunkRect = Rect(x - tw / 2, groundY - th, x + tw / 2, groundY)
-    val leafPath = Path().apply { moveTo(x, groundY - th - lh); lineTo(x - lw / 2, groundY - th); lineTo(x + lw / 2, groundY - th); close() }
-    return TreeCache(trunkRect, leafPath, color)
-}
-
-// --- DIBUJO ---
+// --- FUNCIONES DE DIBUJO ---
 
 fun DrawScope.drawSun(cw: Float, ch: Float, time: Float) {
     val sunCenter = Offset(cw * 0.5f, ch * 0.6f); val pulse = (sin(time * 1.5f) + 1f) * 15f
@@ -370,4 +309,46 @@ fun DrawScope.drawRealisticPaw(start: Offset, end: Offset) {
             drawPath(mainPadPath, color = padColor)
         }
     }
+}
+
+// --- FUNCIONES DE CACHE ---
+
+private fun createMountainCache(cw: Float, ch: Float): List<MountainCache> {
+    val groundY = ch - 120f; val caches = mutableListOf<MountainCache>()
+    fun addMountain(baseStart: Float, peakX: Float, peakY: Float, baseEnd: Float, color: Color, seed: Int) {
+        val random = Random(seed); val path = Path().apply {
+            moveTo(baseStart, groundY)
+            for (i in 1..4) { val t = i.toFloat() / 5; lineTo(baseStart + (peakX - baseStart) * t, groundY - (groundY - peakY) * t + (random.nextFloat() - 0.5f) * 40f) }
+            lineTo(peakX, peakY)
+            for (i in 1..4) { val t = i.toFloat() / 5; lineTo(peakX + (baseEnd - peakX) * t, peakY + (groundY - peakY) * t + (random.nextFloat() - 0.5f) * 40f) }
+            lineTo(baseEnd, groundY); close()
+        }
+        val mountainColor = color.compositeOver(Color(0xFF5E35B1).copy(alpha = 0.3f))
+        val brush = Brush.linearGradient(colors = listOf(mountainColor.compositeOver(Color.White.copy(0.2f)), mountainColor.compositeOver(Color.Black.copy(0.3f))), start = Offset(baseStart, peakY), end = Offset(baseEnd, groundY))
+        val snowPath = Path().apply {
+            moveTo(peakX - (peakX - baseStart) * 0.15f, peakY + (groundY - peakY) * 0.15f); lineTo(peakX, peakY); lineTo(peakX + (baseEnd - peakX) * 0.15f, peakY + (groundY - peakY) * 0.15f)
+            for (i in 1..5) { val t = i.toFloat() / 5; lineTo(peakX + (baseEnd - peakX) * 0.15f - ((baseEnd - peakX) * 0.3f) * t, peakY + (groundY - peakY) * 0.15f + (random.nextFloat() * 20f)) }
+            close()
+        }
+        caches.add(MountainCache(path, snowPath, brush))
+    }
+    addMountain(-200f, cw * 0.2f, groundY - 350f, cw * 0.5f, Color(0xFF78909C), 789)
+    addMountain(cw * 0.5f, cw * 0.85f, groundY - 300f, cw * 1.3f, Color(0xFF90A4AE), 101)
+    addMountain(cw * 0.3f, cw * 0.65f, groundY - 500f, cw * 1.1f, Color(0xFF546E7A), 456)
+    addMountain(-50f, cw * 0.45f, groundY - 250f, cw * 0.95f, Color(0xFF455A64), 123)
+    return caches
+}
+
+private fun createTreeCache(cw: Float, ch: Float): List<TreeCache> {
+    val groundY = ch - 120f; val caches = mutableListOf<TreeCache>(); val random = Random(123)
+    repeat(9) { val x = random.nextFloat() * cw; val scale = 0.5f + random.nextFloat() * 0.5f; caches.add(createSingleTree(x, groundY + 20f, scale, Color(0xFF0D2E10))) }
+    val randomNear = Random(456); repeat(5) { i -> val x = (cw / 5) * i + randomNear.nextFloat() * (cw / 10); val scale = 0.8f + randomNear.nextFloat() * 0.4f; caches.add(createSingleTree(x, groundY + 50f, scale, Color(0xFF1B5E20))) }
+    return caches
+}
+
+private fun createSingleTree(x: Float, groundY: Float, scale: Float, color: Color): TreeCache {
+    val tw = 15f * scale; val th = 30f * scale; val lw = 60f * scale; val lh = 80f * scale
+    val trunkRect = Rect(x - tw / 2, groundY - th, x + tw / 2, groundY)
+    val leafPath = Path().apply { moveTo(x, groundY - th - lh); lineTo(x - lw / 2, groundY - th); lineTo(x + lw / 2, groundY - th); close() }
+    return TreeCache(trunkRect, leafPath, color)
 }
